@@ -1,0 +1,70 @@
+version: '3.8'
+
+networks:
+  backend-network:
+    driver: bridge
+
+services:
+  mongo:
+    image: mongo:6.0
+    container_name: mongo
+    volumes:
+      - mongo-data-s:/data/db
+    healthcheck:
+      test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend-network
+
+  redis:
+    image: redislabs/redistimeseries:latest
+    container_name: redis
+    ports:
+      - '6579:6379'
+    networks:
+      - backend-network
+
+  service-a:
+    build:
+      context: ./service-a
+      dockerfile: Dockerfile
+    container_name: service-a
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/serviceA
+      - REDIS_URL=redis://redis:6379
+      - PORT=3000
+    ports:
+      - '3100:3000'
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: always
+    networks:
+      - backend-network
+
+  service-b:
+    build:
+      context: ./service-b
+      dockerfile: Dockerfile
+    container_name: service-b
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/serviceB
+      - REDIS_URL=redis://redis:6379
+      - PORT=3001
+    ports:
+      - '3101:3001'
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: always
+    networks:
+      - backend-network
+
+volumes:
+  mongo-data-s:
