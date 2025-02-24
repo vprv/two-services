@@ -1,9 +1,7 @@
 // service-b/src/modules/event-logger/event-logger.controller.ts
-
 import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags, ApiQuery } from '@nestjs/swagger';
-import { EventLoggerService } from './event-logger.service';
-import { EventLog } from './event-logger.service';
+import { EventLoggerService, EventLog } from './event-logger.service';
 
 @ApiTags('Event Logger')
 @Controller('events')
@@ -30,11 +28,6 @@ export class EventLoggerController {
   ): Promise<EventLog[]> {
     const fromDate = new Date(`${from}T00:00:00Z`);
     const toDate = new Date(`${to}T23:59:59Z`);
-
-    const events = await this.eventLoggerService.getEventsByDateRange(
-      fromDate,
-      toDate
-    );
-    return events;
+    return this.eventLoggerService.getEventsByDateRange(fromDate, toDate);
   }
 }

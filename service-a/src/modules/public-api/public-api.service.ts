@@ -67,45 +67,41 @@ export class PublicApiService {
     message?: string;
   }> {
     const start = Date.now();
+    try {
+      // Request to the public API by brewery name
+      const response = await axios.get<Brewery[]>(this.breweryApiUrl, {
+        params: { by_name: query }
+      });
+      const data = response.data;
 
-    // Request to the public API by brewery name
-    const response = await axios.get<Brewery[]>(this.breweryApiUrl, {
-      params: { by_name: query }
-    });
-    const data = response.data;
+      if (!data || data.length === 0) {
+        return { success: false, message: 'No results found from API' };
+      }
 
-    // If no data is returned, respond accordingly
-    if (!data || data.length === 0) {
-      return { success: false, message: 'No results found from API' };
+      // Save received data into the BREWERIES collection
+      const collection = this.mongoService.getCollection<Brewery>(CollectionNames.BREWERIES);
+      await collection.insertMany(data, { ordered: false });
+
+      const duration = Date.now() - start;
+
+      // Execute logging operations in parallel
+      await Promise.all([
+        this.redisService.addTimeSeries(EventTypes.SEARCH_AND_STORE, '*', duration),
+        this.messagingService.publishEvent({
+          type: EventTypes.SEARCH_AND_STORE,
+          query,
+          resultCount: data.length,
+          timestamp: new Date().toISOString(),
+          duration
+        })
+      ]);
+
+      this.logger.log(`Search and store executed in ${duration}ms`);
+      return { success: true, data, duration };
+    } catch (error) {
+      this.logger.error('Error in searchAndStore', error);
+      return { success: false, message: 'An error occurred while processing your request.' };
     }
-
-    // Save the received data into the BREWERIES collection
-    const collection = this.mongoService.getCollection<Brewery>(
-      CollectionNames.BREWERIES
-    );
-    await collection.insertMany(data, { ordered: false });
-
-    const duration = Date.now() - start;
-
-    // Log API execution time in Redis TimeSeries using the event type as key
-    await this.redisService.addTimeSeries(
-      EventTypes.SEARCH_AND_STORE,
-      '*',
-      duration
-    );
-
-    // Publish an event for the searchAndStore operation
-    const event: EventPayload = {
-      type: EventTypes.SEARCH_AND_STORE,
-      query,
-      resultCount: data.length,
-      timestamp: new Date().toISOString(),
-      duration
-    };
-    await this.messagingService.publishEvent(event);
-
-    this.logger.log(`Search and store executed in ${duration}ms`);
-    return { success: true, data, duration };
   }
 
   async searchStored(
@@ -119,42 +115,37 @@ export class PublicApiService {
     totalPages: number;
     data: Brewery[];
   }> {
-    const collection = this.mongoService.getCollection<Brewery>(
-      CollectionNames.BREWERIES
-    );
+    try {
+      const collection = this.mongoService.getCollection<Brewery>(CollectionNames.BREWERIES);
+      const filter = query ? { $text: { $search: query } } : {};
+      const skip = (page - 1) * limit;
+      const data = await collection.find(filter).skip(skip).limit(limit).toArray();
+      const total = await collection.countDocuments(filter);
+      const totalPages = Math.ceil(total / limit);
 
-    // If query is empty, use an empty filter (i.e., return all documents)
-    const filter = query ? { $text: { $search: query } } : {};
+      await this.messagingService.publishEvent({
+        type: EventTypes.SEARCH_STORED,
+        query,
+        page,
+        limit,
+        resultCount: data.length,
+        timestamp: new Date().toISOString()
+      });
 
-    const skip = (page - 1) * limit;
-    const data = await collection
-      .find(filter)
-      .skip(skip)
-      .limit(limit)
-      .toArray();
-    const total = await collection.countDocuments(filter);
-    const totalPages = Math.ceil(total / limit);
-
-    // Publish an event for the searchStored operation
-    const event: EventPayload = {
-      type: EventTypes.SEARCH_STORED,
-      query,
-      page,
-      limit,
-      resultCount: data.length,
-      timestamp: new Date().toISOString()
-    };
-    await this.messagingService.publishEvent(event);
-
-    return { total, page, limit, totalPages, data };
+      return { total, page, limit, totalPages, data };
+    } catch (error) {
+      this.logger.error('Error in searchStored', error);
+      throw error;
+    }
   }
 
   async queryTimeSeries(from: number, to: number): Promise<{ result: string }> {
-    const result = await this.redisService.queryTimeSeries(
-      EventTypes.SEARCH_AND_STORE,
-      from,
-      to
-    );
-    return { result };
+    try {
+      const result = await this.redisService.queryTimeSeries(EventTypes.SEARCH_AND_STORE, from, to);
+      return { result };
+    } catch (error) {
+      this.logger.error('Error in queryTimeSeries', error);
+      throw error;
+    }
   }
 }
