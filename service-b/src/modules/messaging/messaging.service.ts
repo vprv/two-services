@@ -1,9 +1,7 @@
 // service-b/src/modules/messaging/messaging.service.ts
-
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { createClient, RedisClientType } from 'redis';
-import { EventLoggerService } from '../event-logger/event-logger.service';
-import { EventLog } from '../event-logger/event-logger.service';
+import { EventLoggerService, EventLog } from '../event-logger/event-logger.service';
 
 @Injectable()
 export class MessagingService implements OnModuleInit {
@@ -13,9 +11,7 @@ export class MessagingService implements OnModuleInit {
   constructor(private readonly eventLoggerService: EventLoggerService) {
     const redisUrl = process.env.REDIS_URL || 'redis://redis:6379';
     this.subscriber = createClient({ url: redisUrl });
-    this.subscriber.on('error', (err) =>
-      console.error('Redis Subscriber Error', err)
-    );
+    this.subscriber.on('error', (err) => console.error('Redis Subscriber Error', err));
   }
 
   async onModuleInit(): Promise<void> {

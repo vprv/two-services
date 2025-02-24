@@ -1,12 +1,10 @@
 // service-a/src/main.ts
-
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
   const config = new DocumentBuilder()
     .setTitle('Service A API')
     .setDescription('API for searching, saving data and logging time')
